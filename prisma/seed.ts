@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import { CONSENT_TEXT } from "@/domain/consent";
-import { formatAnswer, isAnswered, visibleQuestions } from "@/domain/questionnaire";
+import { detectVisitIntent, formatAnswer, isAnswered, visibleQuestions } from "@/domain/questionnaire";
 import { scoreAnswers } from "@/domain/scoring";
 import type { AnswerMap, Channel, LeadStatus, QuestionDef } from "@/domain/types";
 import type { Prisma } from "@/generated/prisma/client";
@@ -247,7 +247,7 @@ async function main() {
     const answers = isComplete ? buildAnswers(propQuestions, spec.profile as Profile, spec.variant) : {};
     const result = isComplete ? scoreAnswers(propQuestions, answers) : { score: 0, maxScore: 0, classification: "UNRATED" as const, pointsByQuestion: {} };
     const answered = isComplete ? visibleQuestions(propQuestions, answers).filter((q) => isAnswered(q, answers[q.id])) : [];
-    const wantsVisit = isComplete && (result.classification === "HIGH" || spec.profile === "high");
+    const wantsVisit = isComplete && detectVisitIntent(propQuestions, answers);
 
     const completedAt = isComplete ? new Date(createdAt.getTime() + 3 * 60_000) : null;
     const historyAt = daysAgo(Math.max(day - 0.25, 0));
