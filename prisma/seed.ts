@@ -98,7 +98,29 @@ function photoUrl(id: string): string {
 
 // ---------- main ----------
 
+/**
+ * O seed apaga e recria a conta de exemplo: só roda contra um banco local (localhost/127.0.0.1)
+ * fora de produção, a menos que ALLOW_SEED=1 seja definido de propósito.
+ */
+function assertSafeToSeed() {
+  if (process.env.ALLOW_SEED === "1") return;
+  let host = "";
+  try {
+    host = new URL(process.env.DATABASE_URL ?? "").hostname;
+  } catch {
+    /* URL inválida: tratada como não local */
+  }
+  const local = host === "localhost" || host === "127.0.0.1";
+  if (process.env.NODE_ENV === "production" || !local) {
+    throw new Error(
+      `Seed recusado: NODE_ENV=${process.env.NODE_ENV ?? "(vazio)"}, host do banco "${host || "?"}". ` +
+        "O seed só roda em banco local fora de produção. Para forçar, defina ALLOW_SEED=1.",
+    );
+  }
+}
+
 async function main() {
+  assertSafeToSeed();
   // idempotência: remove conta de exemplo anterior (leads/imóveis primeiro por causa do Restrict)
   const existing = await db.user.findUnique({ where: { email: EMAIL } });
   if (existing) {

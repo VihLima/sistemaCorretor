@@ -3,6 +3,13 @@ import { defineConfig, devices } from "@playwright/test";
 
 const PORT = 3100;
 
+// Os testes E2E apagam o banco (global-setup): nunca rodar sem um banco de teste separado.
+const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
+if (!TEST_DATABASE_URL) throw new Error("TEST_DATABASE_URL não configurada (veja .env.example).");
+if (TEST_DATABASE_URL === process.env.DATABASE_URL) {
+  throw new Error("TEST_DATABASE_URL não pode ser igual a DATABASE_URL: os testes E2E apagam o banco.");
+}
+
 // Usamos um build de produção (`next build && next start`) em vez de `next dev` porque o Next 16
 // recusa um segundo `next dev` no mesmo diretório do projeto, e o ambiente de desenvolvimento local
 // já costuma ter um rodando na porta 3000. `NEXT_DIST_DIR` (ver next.config.ts) manda a saída do
@@ -20,9 +27,12 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 300_000,
     env: {
-      DATABASE_URL: process.env.TEST_DATABASE_URL ?? "",
+      DATABASE_URL: TEST_DATABASE_URL,
       APP_URL: `http://localhost:${PORT}`,
       STORAGE_DRIVER: "local",
+      // Opt-in explícito: em produção o driver "local" é recusado (src/server/storage/index.ts);
+      // aqui o servidor de produção roda na própria máquina, então o disco local serve.
+      ALLOW_LOCAL_STORAGE: "1",
       NEXT_DIST_DIR: ".next-e2e",
     },
   },
