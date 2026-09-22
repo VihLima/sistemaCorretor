@@ -1,26 +1,104 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/*
+ * Corretor Leads — tokens de design.
+ *
+ * Painel: ferramenta de trabalho calma. Fundo "pedra" levemente esverdeado,
+ * superfícies brancas, uma única cor forte (petróleo) para ações primárias.
+ * O verde do WhatsApp é reservado a ações que abrem o WhatsApp.
+ *
+ * Marca por corretor (futuro): defina `--color-brand` num elemento com
+ * `data-brand` (ex.: <div data-brand style={{ "--color-brand": "#7a2e3b" }}>)
+ * e os tons derivados (strong/soft) são recalculados nesse escopo.
+ */
+@theme static {
+  /* superfícies e texto */
+  --color-canvas: #ecece6;
+  --color-surface: #ffffff;
+  --color-surface-sunken: #f5f5f1;
+  --color-ink: #16292a;
+  --color-ink-muted: #526366;
+  --color-ink-faint: #7f8d8f;
+  --color-line: #dadbd3;
+  --color-line-strong: #bfc2b9;
+
+  /* marca (petróleo) */
+  --color-brand: #0b5c5e;
+  --color-brand-strong: color-mix(in oklab, var(--color-brand) 78%, black);
+  --color-brand-soft: color-mix(in oklab, var(--color-brand) 10%, white);
+  --color-on-brand: #ffffff;
+
+  /* WhatsApp — somente para ações de WhatsApp */
+  --color-whatsapp: #178a45;
+  --color-whatsapp-strong: #106b35;
+
+  /* tons semânticos (Badge / mensagens) */
+  --color-success: #0d6b4f;
+  --color-success-soft: #e0f2ea;
+  --color-warning: #8a5300;
+  --color-warning-soft: #fbefd5;
+  --color-danger: #b42318;
+  --color-danger-soft: #fce9e7;
+  --color-info: #1f5b86;
+  --color-info-soft: #e4eef6;
+  --color-neutral: #526366;
+  --color-neutral-soft: #eeeee9;
+
+  /* classificação de intenção */
+  --color-intent-high: #047857;
+  --color-intent-high-soft: #dcf3e8;
+  --color-intent-medium: #a35c00;
+  --color-intent-medium-soft: #fcefd6;
+  --color-intent-low: #475569;
+  --color-intent-low-soft: #e9edf2;
+  --color-intent-unrated: #6b7678;
+
+  /* raios: controle < cartão < painel */
+  --radius-control: 0.625rem;
+  --radius-card: 0.875rem;
+  --radius-panel: 1.25rem;
+
+  --shadow-card: 0 1px 0 rgb(22 41 42 / 0.04), 0 1px 3px rgb(22 41 42 / 0.06);
+  --shadow-raised: 0 12px 32px -12px rgb(8 40 42 / 0.28);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-ui), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-serif), Georgia, "Times New Roman", serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* recalcula os tons derivados quando a marca é sobrescrita num escopo */
+[data-brand] {
+  --color-brand-strong: color-mix(in oklab, var(--color-brand) 78%, black);
+  --color-brand-soft: color-mix(in oklab, var(--color-brand) 10%, white);
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: var(--color-brand-soft);
+    color: var(--color-ink);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
