@@ -80,7 +80,7 @@ export function ProfileForm({ profile }: { profile: ProfileFormData }) {
           <PhotoUploader name={values.name} photoUrl={profile.photoUrl} />
         </Card>
 
-        <form ref={formRef} action={formAction} onSubmit={onSubmit} noValidate className="flex flex-col gap-6">
+        <form ref={formRef} onSubmit={onSubmit} noValidate className="flex flex-col gap-6">
           <Card title="Seus dados">
             <div className="grid gap-5 sm:grid-cols-2">
               <Field label="Nome" error={errors.name} className="sm:col-span-2">

@@ -27,7 +27,7 @@ export async function deleteQuestionAction(id: string): Promise<FormState> {
 export async function moveQuestionAction(id: string, dir: "up" | "down"): Promise<FormState> {
   const user = await requireUser();
   return runAction(async () => {
-    await moveQuestion(user, id, dir === "up" ? "up" : "down");
+    await moveQuestion(user, id, dir);
     revalidatePath("/painel/questionario");
   });
 }

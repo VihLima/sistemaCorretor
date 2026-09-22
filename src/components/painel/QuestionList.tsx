@@ -6,21 +6,9 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { FormMessage } from "@/components/ui/FormMessage";
 import { CLASSIFICATION_DISCLAIMER, QUESTION_TYPE_LABELS } from "@/domain/labels";
-import { HIGH_THRESHOLD, MEDIUM_THRESHOLD, questionMaxPoints } from "@/domain/scoring";
-import type { QuestionType } from "@/domain/types";
+import { classificationThresholds, questionnaireMaxPoints, weightedMaxPoints } from "@/domain/scoring";
 import { initialFormState, type FormState } from "@/lib/form-state";
 import { QuestionEditor, type EditorQuestion, type QuestionDraft } from "./QuestionEditor";
-
-const maxPoints = (type: QuestionType, options: { weight: number }[]) =>
-  questionMaxPoints({
-    id: "",
-    label: "",
-    type,
-    required: false,
-    isVisitIntent: false,
-    showIf: null,
-    options: options.map((o, i) => ({ id: String(i), label: "", weight: o.weight })),
-  });
 
 const pts = (n: number) => `${n} ${n === 1 ? "pt" : "pts"}`;
 
@@ -62,11 +50,8 @@ export function QuestionList({ questions, max }: QuestionListProps) {
   };
 
   // pontuação máxima: perguntas salvas, trocando a que está em edição pelo rascunho
-  const total =
-    questions.reduce((sum, q) => (q.id === editing && draft ? sum : sum + maxPoints(q.type, q.options)), 0) +
-    (draft ? maxPoints(draft.type, draft.options) : 0);
-  const highFrom = Math.ceil(total * HIGH_THRESHOLD);
-  const mediumFrom = Math.ceil(total * MEDIUM_THRESHOLD);
+  const total = questionnaireMaxPoints(questions, draft && { replaceId: editing === "new" ? null : editing, question: draft });
+  const thresholds = classificationThresholds(total);
   const full = questions.length >= max;
 
   return (
@@ -114,7 +99,7 @@ export function QuestionList({ questions, max }: QuestionListProps) {
                       </ul>
                     )}
                     <p className="text-xs text-ink-muted">
-                      {q.options.length > 0 ? `Vale até ${pts(maxPoints(q.type, q.options))}` : "Não entra na pontuação"}
+                      {q.options.length > 0 ? `Vale até ${pts(weightedMaxPoints(q))}` : "Não entra na pontuação"}
                     </p>
                   </div>
                 </div>
@@ -211,14 +196,14 @@ export function QuestionList({ questions, max }: QuestionListProps) {
               <span aria-hidden className="size-2.5 rounded-full bg-intent-high" />
               Alta: 60% ou mais
             </dt>
-            <dd className="shrink-0 text-ink-muted tabular-nums">{total > 0 ? `a partir de ${pts(highFrom)}` : "—"}</dd>
+            <dd className="shrink-0 text-ink-muted tabular-nums">{thresholds ? `a partir de ${pts(thresholds.high)}` : "—"}</dd>
           </div>
           <div className="flex items-center justify-between gap-3">
             <dt className="flex items-center gap-2 text-ink">
               <span aria-hidden className="size-2.5 rounded-full bg-intent-medium" />
               Média: 30% ou mais
             </dt>
-            <dd className="shrink-0 text-ink-muted tabular-nums">{total > 0 ? `a partir de ${pts(mediumFrom)}` : "—"}</dd>
+            <dd className="shrink-0 text-ink-muted tabular-nums">{thresholds ? `a partir de ${pts(thresholds.medium)}` : "—"}</dd>
           </div>
           <div className="flex items-center justify-between gap-3">
             <dt className="flex items-center gap-2 text-ink">

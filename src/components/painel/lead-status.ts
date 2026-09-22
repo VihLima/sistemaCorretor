@@ -19,8 +19,3 @@ const dateTime = new Intl.DateTimeFormat("pt-BR", {
 });
 export const formatDateTime = (d: Date) => dateTime.format(d);
 
-/** Pontuação normalizada para 0–100 (ex.: 65/100); `null` quando não há perguntas pontuáveis. */
-export function scoreOutOf100(score: number, maxScore: number): number | null {
-  if (maxScore <= 0) return null;
-  return Math.round((Math.min(score, maxScore) / maxScore) * 100);
-}

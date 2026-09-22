@@ -1,29 +1,17 @@
 import { z } from "zod";
-import { CHANNELS, CLASSIFICATIONS, LEAD_STATUSES, type LeadStatus } from "@/domain/types";
+import { LEAD_STATUSES, type LeadStatus } from "@/domain/types";
 import type { Prisma } from "@/generated/prisma/client";
-import { emptyToUndefined, parseOrThrow } from "@/lib/validation/parse";
+import { leadFiltersSchema } from "@/lib/validation/lead-filters";
+import { parseOrThrow } from "@/lib/validation/parse";
 import type { Ctx } from "@/server/context";
 import { db } from "@/server/db";
 import { NotFoundError } from "@/server/errors";
 
 export const LEADS_PAGE_SIZE = 25;
-const opt = <T extends z.ZodType>(schema: T) => z.preprocess(emptyToUndefined, schema.optional());
-
-const filtersSchema = z.object({
-  propertyId: opt(z.string().max(50)),
-  classification: opt(z.enum(CLASSIFICATIONS)),
-  status: opt(z.enum(LEAD_STATUSES)),
-  channel: opt(z.enum(CHANNELS)),
-  complete: opt(z.enum(["yes", "no"])),
-  q: opt(z.string().trim().max(100)),
-  days: opt(z.coerce.number().int().positive().max(3650)),
-  page: z.preprocess(emptyToUndefined, z.coerce.number().int().min(1).default(1)),
-});
-
-export type LeadFilters = z.input<typeof filtersSchema>;
+export type { LeadFilters } from "@/lib/validation/lead-filters";
 
 export async function listLeads(ctx: Ctx, input: unknown) {
-  const f = parseOrThrow(filtersSchema, input);
+  const f = parseOrThrow(leadFiltersSchema, input);
   const where: Prisma.LeadWhereInput = {
     accountId: ctx.accountId,
     propertyId: f.propertyId,

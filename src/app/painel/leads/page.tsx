@@ -7,54 +7,24 @@ import { buttonStyles } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { CLASSIFICATION_DISCLAIMER } from "@/domain/labels";
+import { leadsPageHref, readLeadListParams, totalPages } from "@/lib/lead-list-params";
 import { requireUser } from "@/server/auth/current";
-import { ValidationError } from "@/server/errors";
 import { listLeads } from "@/server/services/leads";
 import { listProperties } from "@/server/services/properties";
 
 export const metadata: Metadata = { title: "Contatos" };
 
-const FILTER_KEYS = ["propertyId", "classification", "status", "channel", "complete", "q", "days", "page"] as const;
-
-/** Lê os filtros da URL. `complete=all` inclui incompletos; sem o parâmetro, só os que concluíram. */
-function readFilters(sp: Record<string, string | string[] | undefined>) {
-  const raw: Record<string, string> = {};
-  for (const k of FILTER_KEYS) {
-    const v = sp[k];
-    const s = Array.isArray(v) ? v[0] : v;
-    if (s) raw[k] = s;
-  }
-  const { complete, ...rest } = raw;
-  return { raw, service: { ...rest, complete: complete === "all" ? undefined : "yes" } };
-}
-
-async function safeList(user: Awaited<ReturnType<typeof requireUser>>, filters: Record<string, string | undefined>) {
-  try {
-    return await listLeads(user, filters);
-  } catch (e) {
-    // parâmetro inválido na URL (ex.: status digitado à mão): ignora os filtros em vez de quebrar
-    if (e instanceof ValidationError) return listLeads(user, { complete: "yes" });
-    throw e;
-  }
-}
-
 export default async function LeadsPage({ searchParams }: PageProps<"/painel/leads">) {
   const user = await requireUser();
-  const { raw, service } = readFilters(await searchParams);
-  const [result, properties] = await Promise.all([safeList(user, service), listProperties(user)]);
+  const { raw, filters } = readLeadListParams(await searchParams);
+  const [result, properties] = await Promise.all([listLeads(user, filters), listProperties(user)]);
   const { items, total, page, pageSize } = result;
-  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const pages = totalPages(total, pageSize);
   const hasFilters = Object.keys(raw).some((k) => k !== "page");
   // Sem resultados: distingue "nenhum contato ainda" de "nenhum com esses filtros".
   const everHadLeads = items.length > 0 || (await listLeads(user, { page: 1 })).total > 0;
 
-  const pageHref = (p: number) => {
-    const qs = new URLSearchParams(raw);
-    if (p > 1) qs.set("page", String(p));
-    else qs.delete("page");
-    const s = qs.toString();
-    return s ? `/painel/leads?${s}` : "/painel/leads";
-  };
+  const pageHref = (p: number) => leadsPageHref(raw, p);
 
   return (
     <div className="flex flex-col gap-6">

@@ -5,7 +5,8 @@ import { ClassificationBadge } from "@/components/ui/ClassificationBadge";
 import { formatBrPhone } from "@/domain/phone";
 import { CHANNEL_LABELS, LEAD_STATUS_LABELS } from "@/domain/labels";
 import type { Channel, Classification, LeadStatus } from "@/domain/types";
-import { formatDateTime, LEAD_STATUS_TONES, scoreOutOf100 } from "./lead-status";
+import { scoreOutOf100 } from "@/domain/scoring";
+import { formatDateTime, LEAD_STATUS_TONES } from "./lead-status";
 
 export type LeadRow = {
   id: string;

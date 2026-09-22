@@ -51,3 +51,46 @@ export function scoreAnswers(questions: QuestionDef[], answers: AnswerMap): Scor
   }
   return { score, maxScore, classification: classify(score, maxScore), pointsByQuestion };
 }
+
+/** Pontuação normalizada para 0–100 (ex.: 65/100); `null` quando não há perguntas pontuáveis. */
+export function scoreOutOf100(score: number, maxScore: number): number | null {
+  if (maxScore <= 0) return null;
+  return Math.round((Math.min(score, maxScore) / maxScore) * 100);
+}
+
+/** Forma mínima de uma pergunta para calcular pontuação máxima (editor do questionário). */
+export type WeightedQuestion = { type: QuestionDef["type"]; options: { weight: number }[] };
+
+/** Pontuação máxima de uma pergunta a partir só do tipo e dos pesos. */
+export function weightedMaxPoints(q: WeightedQuestion): number {
+  return questionMaxPoints({
+    id: "",
+    label: "",
+    type: q.type,
+    required: false,
+    isVisitIntent: false,
+    showIf: null,
+    options: q.options.map((o, i) => ({ id: String(i), label: "", weight: o.weight })),
+  });
+}
+
+/**
+ * Pontuação máxima do questionário. Com `draft`, a pergunta `replaceId` é trocada pelo rascunho
+ * (ou o rascunho é somado, quando `replaceId` não está na lista — pergunta nova).
+ */
+export function questionnaireMaxPoints(
+  questions: (WeightedQuestion & { id: string })[],
+  draft?: { replaceId: string | null; question: WeightedQuestion } | null,
+): number {
+  const saved = questions.reduce(
+    (sum, q) => (draft && q.id === draft.replaceId ? sum : sum + weightedMaxPoints(q)),
+    0,
+  );
+  return saved + (draft ? weightedMaxPoints(draft.question) : 0);
+}
+
+/** Menor pontuação (em pontos inteiros) que atinge Alta e Média para um máximo dado. */
+export function classificationThresholds(maxScore: number): { high: number; medium: number } | null {
+  if (maxScore <= 0) return null;
+  return { high: Math.ceil(maxScore * HIGH_THRESHOLD), medium: Math.ceil(maxScore * MEDIUM_THRESHOLD) };
+}
