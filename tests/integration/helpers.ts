@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import type { Prisma } from "@/generated/prisma/client";
 import type { Ctx } from "@/server/context";
 import { db } from "@/server/db";
 import { signup } from "@/server/services/accounts";
@@ -47,4 +49,14 @@ export async function makePublishedProperty(ctx: Ctx, overrides: Record<string, 
   const p = await createProperty(ctx, propertyInput(overrides));
   await addPropertyImage(ctx, p.id, { data: PNG_1PX });
   return setPropertyStatus(ctx, p.id, "PUBLISHED");
+}
+
+export async function makeLead(ctx: Ctx, propertyId: string, overrides: Partial<Prisma.LeadUncheckedCreateInput> = {}) {
+  return db.lead.create({
+    data: {
+      accountId: ctx.accountId, propertyId, publicToken: randomUUID(), name: "Lead Teste",
+      phone: "5567911112222", consentAt: new Date(), consentText: "ok", isComplete: true,
+      classification: "MEDIUM", channel: "DIRECT", ...overrides,
+    },
+  });
 }
