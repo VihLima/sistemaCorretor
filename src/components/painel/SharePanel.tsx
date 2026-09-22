@@ -60,6 +60,7 @@ export function SharePanel({ propertyId, publicUrl }: SharePanelProps) {
           <div className="flex flex-col gap-2 sm:flex-row">
             <input
               id="public-url"
+              data-testid="public-url"
               readOnly
               value={publicUrl}
               onFocus={(e) => e.currentTarget.select()}
