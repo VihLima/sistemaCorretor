@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { NotFoundError } from "@/server/errors";
 import { getProfile, updateProfile, updateProfilePhoto } from "@/server/services/profile";
 import { PNG_1PX } from "../fixtures/images";
 import { makeAgent } from "./helpers";
@@ -21,5 +22,18 @@ describe("perfil", () => {
     const ctx = await makeAgent();
     await updateProfilePhoto(ctx, { data: PNG_1PX });
     expect((await getProfile(ctx)).photoUrl).toMatch(/^memory:\/\//);
+  });
+
+  it("isola contas: ctx forjado de outra conta não acessa nem altera o perfil", async () => {
+    const a = await makeAgent({ name: "Ana" });
+    const b = await makeAgent({ name: "Bia" });
+    const before = await getProfile(a);
+    const forged = { accountId: b.accountId, userId: a.userId };
+
+    await expect(getProfile(forged)).rejects.toBeInstanceOf(NotFoundError);
+    await expect(updateProfile(forged, { name: "Hackeada" })).rejects.toBeInstanceOf(NotFoundError);
+    await expect(updateProfilePhoto(forged, { data: PNG_1PX })).rejects.toBeInstanceOf(NotFoundError);
+
+    expect(await getProfile(a)).toEqual(before);
   });
 });
