@@ -40,14 +40,16 @@ export const startLeadSchema = z.object({
 });
 
 export const answersSchema = z.object({
-  answers: z.record(
-    z.string(),
-    z.object({
-      optionIds: z.array(z.string().max(50)).max(20).optional(),
-      text: z.string().max(2000).optional(),
-      number: z.number().optional(),
-    }),
-  ),
+  answers: z
+    .record(
+      z.string().max(50),
+      z.object({
+        optionIds: z.array(z.string().max(50)).max(20).optional(),
+        text: z.string().max(2000).optional(),
+        number: z.number().optional(),
+      }),
+    )
+    .refine((v) => Object.keys(v).length <= 20, "Respostas demais"),
 });
 
 export const publicEventSchema = z.object({

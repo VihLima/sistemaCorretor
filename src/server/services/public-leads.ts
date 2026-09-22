@@ -32,6 +32,9 @@ function tokensMatch(a: string, b: string) {
 }
 
 async function loadLead(leadId: string, token: string) {
+  if (typeof leadId !== "string" || leadId.length > 100 || typeof token !== "string" || token.length > 100) {
+    throw new NotFoundError("Contato");
+  }
   const lead = await db.lead.findUnique({
     where: { id: leadId },
     include: { property: { include: { agent: true } }, answers: { orderBy: { position: "asc" } } },
@@ -138,15 +141,20 @@ export async function getHandoff(leadId: string, token: string, opts: { appUrl: 
 export async function registerWhatsappClick(leadId: string, token: string) {
   const lead = await loadLead(leadId, token);
   if (lead.whatsappClickedAt) return;
-  await db.$transaction([
-    db.lead.update({ where: { id: leadId }, data: { whatsappClickedAt: new Date() } }),
-    db.analyticsEvent.create({
-      data: {
-        accountId: lead.accountId, propertyId: lead.propertyId, type: "WHATSAPP_CLICK",
-        visitorId: lead.visitorId, channel: lead.channel, utmSource: lead.utmSource, utmCampaign: lead.utmCampaign,
-      },
-    }),
-  ]);
+  await db.$transaction(async (tx) => {
+    const { count } = await tx.lead.updateMany({
+      where: { id: leadId, whatsappClickedAt: null },
+      data: { whatsappClickedAt: new Date() },
+    });
+    if (count === 1) {
+      await tx.analyticsEvent.create({
+        data: {
+          accountId: lead.accountId, propertyId: lead.propertyId, type: "WHATSAPP_CLICK",
+          visitorId: lead.visitorId, channel: lead.channel, utmSource: lead.utmSource, utmCampaign: lead.utmCampaign,
+        },
+      });
+    }
+  });
 }
 
 export async function recordPublicEvent(input: unknown, opts: { ownHost?: string } = {}) {

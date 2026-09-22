@@ -90,6 +90,15 @@ describe("submitAnswers", () => {
     expect(await db.leadAnswer.count()).toBe(5);
     expect(await db.analyticsEvent.count({ where: { type: "QUESTIONNAIRE_COMPLETE" } })).toBe(1);
   });
+
+  it("recusa mais de 20 respostas", async () => {
+    const { property } = await setup();
+    const { leadId, token } = await startLead(contact(property.id));
+    const answers = Object.fromEntries(
+      Array.from({ length: 21 }, (_, i) => [`q${i}`, { text: "x" }]),
+    );
+    await expect(submitAnswers(leadId, token, { answers }, { appUrl })).rejects.toBeInstanceOf(ValidationError);
+  });
 });
 
 describe("registerWhatsappClick", () => {
@@ -100,6 +109,14 @@ describe("registerWhatsappClick", () => {
     await registerWhatsappClick(leadId, token);
     await registerWhatsappClick(leadId, token);
     expect((await db.lead.findUniqueOrThrow({ where: { id: leadId } })).whatsappClickedAt).toBeInstanceOf(Date);
+    expect(await db.analyticsEvent.count({ where: { type: "WHATSAPP_CLICK" } })).toBe(1);
+  });
+
+  it("registra uma única vez mesmo com chamadas concorrentes", async () => {
+    const { property, best } = await setup();
+    const { leadId, token } = await startLead(contact(property.id));
+    await submitAnswers(leadId, token, { answers: best }, { appUrl });
+    await Promise.all([registerWhatsappClick(leadId, token), registerWhatsappClick(leadId, token)]);
     expect(await db.analyticsEvent.count({ where: { type: "WHATSAPP_CLICK" } })).toBe(1);
   });
 });
