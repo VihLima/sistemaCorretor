@@ -60,7 +60,7 @@ export async function getLead(ctx: Ctx, id: string) {
       property: { select: { id: true, title: true, slug: true } },
       answers: { orderBy: { position: "asc" } },
       notes: { orderBy: { createdAt: "desc" }, include: { author: { select: { name: true } } } },
-      history: { orderBy: { createdAt: "asc" } },
+      history: { orderBy: { createdAt: "asc" }, include: { changedBy: { select: { name: true } } } },
     },
   });
   if (!lead) throw new NotFoundError("Contato");
