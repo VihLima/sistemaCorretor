@@ -7,7 +7,7 @@ import { buildLeadMessage, waMeChannel } from "@/domain/whatsapp";
 import { answersSchema, publicEventSchema, startLeadSchema } from "@/lib/validation/lead";
 import { parseOrThrow } from "@/lib/validation/parse";
 import { db } from "@/server/db";
-import { NotFoundError, ValidationError } from "@/server/errors";
+import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
 import { getQuestionDefsForProperty } from "./questionnaires";
 
 const REUSE_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -48,12 +48,16 @@ export async function startLead(input: unknown, opts: { ownHost?: string } = {})
   const property = await getPublishedProperty(data.propertyId);
   const attribution = resolveAttribution({ ...data.attribution, ownHost: opts.ownHost });
 
-  const existing = await db.lead.findFirst({
-    where: {
-      propertyId: property.id, phone: data.phone, isComplete: false,
-      createdAt: { gte: new Date(Date.now() - REUSE_WINDOW_MS) },
-    },
-  });
+  // Só retoma um lead incompleto do mesmo navegador (mesmo visitorId): quem souber apenas o telefone
+  // de outra pessoa não recebe o token do lead dela nem sobrescreve nome/e-mail.
+  const existing = data.visitorId
+    ? await db.lead.findFirst({
+        where: {
+          propertyId: property.id, phone: data.phone, visitorId: data.visitorId, isComplete: false,
+          createdAt: { gte: new Date(Date.now() - REUSE_WINDOW_MS) },
+        },
+      })
+    : null;
   if (existing) {
     await db.lead.update({ where: { id: existing.id }, data: { name: data.name, email: data.email } });
     return { leadId: existing.id, token: existing.publicToken };
@@ -91,8 +95,22 @@ export async function submitAnswers(leadId: string, token: string, input: unknow
   const answered = visibleQuestions(questions, answers).filter((q) => isAnswered(q, answers[q.id]));
   const result = scoreAnswers(questions, answers);
 
-  await db.$transaction([
-    db.leadAnswer.createMany({
+  // Concluir primeiro, condicionado a isComplete = false: se dois envios chegarem juntos, só o que
+  // conseguir marcar o lead grava respostas e evento; o outro devolve o resultado já salvo.
+  await db.$transaction(async (tx) => {
+    const { count } = await tx.lead.updateMany({
+      where: { id: leadId, isComplete: false },
+      data: {
+        isComplete: true,
+        completedAt: new Date(),
+        score: result.score,
+        maxScore: result.maxScore,
+        classification: result.classification,
+        wantsVisit: detectVisitIntent(questions, answers),
+      },
+    });
+    if (count === 0) return;
+    await tx.leadAnswer.createMany({
       data: answered.map((q, i) => ({
         leadId,
         questionId: q.id,
@@ -102,32 +120,24 @@ export async function submitAnswers(leadId: string, token: string, input: unknow
         displayValue: formatAnswer(q, answers[q.id]),
         points: result.pointsByQuestion[q.id] ?? 0,
       })),
-    }),
-    db.lead.update({
-      where: { id: leadId },
-      data: {
-        isComplete: true,
-        completedAt: new Date(),
-        score: result.score,
-        maxScore: result.maxScore,
-        classification: result.classification,
-        wantsVisit: detectVisitIntent(questions, answers),
-      },
-    }),
-    db.analyticsEvent.create({
+    });
+    await tx.analyticsEvent.create({
       data: {
         accountId: lead.accountId, propertyId: lead.propertyId, type: "QUESTIONNAIRE_COMPLETE",
         visitorId: lead.visitorId, channel: lead.channel, utmSource: lead.utmSource, utmCampaign: lead.utmCampaign,
       },
-    }),
-  ]);
+    });
+  });
   return getHandoff(leadId, token, opts);
 }
 
 export async function getHandoff(leadId: string, token: string, opts: { appUrl: string }): Promise<Handoff> {
   const lead = await loadLead(leadId, token);
   const phone = lead.property.agent.whatsapp;
-  if (!phone) throw new NotFoundError("WhatsApp do corretor");
+  // Não é 404: o lead existe e as respostas já foram salvas; o visitante pode tentar de novo depois.
+  if (!phone) {
+    throw new ConflictError("O contato do corretor está indisponível no momento. Suas respostas foram salvas; tente novamente mais tarde.");
+  }
   const lines = lead.answers.map((a) => ({ label: a.questionLabel, value: a.displayValue }));
   const message = buildLeadMessage({
     leadName: lead.name,

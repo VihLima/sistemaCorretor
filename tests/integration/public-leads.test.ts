@@ -1,14 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { db } from "@/server/db";
-import { NotFoundError, ValidationError } from "@/server/errors";
+import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
 import { createProperty } from "@/server/services/properties";
 import {
-  getPublicQuestions, recordPublicEvent, registerWhatsappClick, startLead, submitAnswers,
+  getHandoff, getPublicQuestions, recordPublicEvent, registerWhatsappClick, startLead, submitAnswers,
 } from "@/server/services/public-leads";
 import { getQuestionDefsForProperty } from "@/server/services/questionnaires";
 import { makeAgent, makePublishedProperty, propertyInput } from "./helpers";
 
 const appUrl = "https://app.teste";
+const VISITOR = "7f1c2a9e-3b4d-4e5f-8a6b-0c1d2e3f4a5b";
+const OTHER_VISITOR = "0a1b2c3d-4e5f-4a6b-9c7d-8e9f0a1b2c3d";
 
 async function setup() {
   const ctx = await makeAgent();
@@ -20,7 +22,7 @@ async function setup() {
 }
 
 const contact = (propertyId: string, extra: Record<string, unknown> = {}) => ({
-  propertyId, name: "João Silva", phone: "(67) 98888-7777", consent: true, visitorId: "v1", ...extra,
+  propertyId, name: "João Silva", phone: "(67) 98888-7777", consent: true, visitorId: VISITOR, ...extra,
 });
 
 describe("startLead", () => {
@@ -46,10 +48,32 @@ describe("startLead", () => {
 
   it("reaproveita lead incompleto do mesmo telefone no mesmo imóvel", async () => {
     const { property } = await setup();
-    const first = await startLead(contact(property.id));
-    const second = await startLead(contact(property.id, { name: "João S." }));
+    const first = await startLead(contact(property.id, { visitorId: VISITOR }));
+    const second = await startLead(contact(property.id, { name: "João S.", visitorId: VISITOR }));
     expect(second.leadId).toBe(first.leadId);
+    expect(second.token).toBe(first.token);
     expect(await db.lead.count()).toBe(1);
+  });
+
+  it("não entrega o lead de outro navegador que usa o mesmo telefone", async () => {
+    const { property } = await setup();
+    const first = await startLead(contact(property.id, { email: "joao@teste.com", visitorId: VISITOR }));
+    const other = await startLead(contact(property.id, { name: "Intruso", email: "x@teste.com", visitorId: OTHER_VISITOR }));
+    expect(other.leadId).not.toBe(first.leadId);
+    expect(other.token).not.toBe(first.token);
+    const original = await db.lead.findUniqueOrThrow({ where: { id: first.leadId } });
+    expect(original).toMatchObject({ name: "João Silva", email: "joao@teste.com" });
+    const noVisitor = await startLead(contact(property.id, { visitorId: undefined }));
+    expect(noVisitor.leadId).not.toBe(first.leadId);
+    expect(await db.lead.count()).toBe(3);
+  });
+
+  it("recusa visitorId genérico ou mal formatado", async () => {
+    const { property } = await setup();
+    for (const visitorId of ["anon", "ANON", "v1", "a b c d e f g h", "x".repeat(65)]) {
+      await expect(startLead(contact(property.id, { visitorId }))).rejects.toBeInstanceOf(ValidationError);
+      await expect(recordPublicEvent({ propertyId: property.id, type: "PAGE_VIEW", visitorId })).rejects.toBeInstanceOf(ValidationError);
+    }
   });
 });
 
@@ -91,6 +115,32 @@ describe("submitAnswers", () => {
     expect(await db.analyticsEvent.count({ where: { type: "QUESTIONNAIRE_COMPLETE" } })).toBe(1);
   });
 
+  it("envios concorrentes gravam respostas e evento uma única vez", async () => {
+    const { property, best } = await setup();
+    const { leadId, token } = await startLead(contact(property.id));
+    const results = await Promise.all([
+      submitAnswers(leadId, token, { answers: best }, { appUrl }),
+      submitAnswers(leadId, token, { answers: best }, { appUrl }),
+    ]);
+    expect(results[0].whatsappUrl).toBe(results[1].whatsappUrl);
+    expect(await db.leadAnswer.count()).toBe(5);
+    expect(await db.analyticsEvent.count({ where: { type: "QUESTIONNAIRE_COMPLETE" } })).toBe(1);
+  });
+
+  it("sem WhatsApp do corretor falha com conflito (não 404) e mantém as respostas", async () => {
+    const { ctx, property, best } = await setup();
+    const { leadId, token } = await startLead(contact(property.id));
+    await db.user.update({ where: { id: ctx.userId }, data: { whatsapp: null } });
+    const err = await submitAnswers(leadId, token, { answers: best }, { appUrl }).catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictError);
+    expect(err).not.toBeInstanceOf(NotFoundError);
+    expect(err.message).toMatch(/indisponível/);
+    expect(await db.leadAnswer.count()).toBe(5);
+    await expect(getHandoff(leadId, token, { appUrl })).rejects.toBeInstanceOf(ConflictError);
+    await db.user.update({ where: { id: ctx.userId }, data: { whatsapp: "5567999990000" } });
+    expect((await submitAnswers(leadId, token, { answers: best }, { appUrl })).whatsappUrl).toMatch(/^https:\/\/wa\.me\//);
+  });
+
   it("recusa mais de 20 respostas", async () => {
     const { property } = await setup();
     const { leadId, token } = await startLead(contact(property.id));
@@ -124,7 +174,7 @@ describe("registerWhatsappClick", () => {
 describe("recordPublicEvent e getPublicQuestions", () => {
   it("registra visualização com canal e ignora imóvel não publicado", async () => {
     const { ctx, property } = await setup();
-    await recordPublicEvent({ propertyId: property.id, type: "PAGE_VIEW", visitorId: "v1", attribution: { utmSource: "qrcode" } });
+    await recordPublicEvent({ propertyId: property.id, type: "PAGE_VIEW", visitorId: VISITOR, attribution: { utmSource: "qrcode" } });
     const ev = await db.analyticsEvent.findFirstOrThrow();
     expect(ev).toMatchObject({ accountId: ctx.accountId, channel: "QR_CODE", type: "PAGE_VIEW" });
     const draft = await createProperty(ctx, propertyInput({ title: "Outro imóvel" }));

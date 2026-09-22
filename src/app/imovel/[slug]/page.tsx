@@ -52,6 +52,8 @@ export default async function PropertyPage({ params }: PageProps<"/imovel/[slug]
 
   const appUrl = await getAppUrl();
   const available = p.status === "PUBLISHED";
+  /** Sem WhatsApp do corretor não há para onde encaminhar o visitante: esconde o CTA e avisa. */
+  const contactable = available && Boolean(p.agent.whatsapp);
   const isRent = p.purpose === "RENT";
   const interestHref = `/imovel/${p.slug}/interesse`;
   const price = formatBRL(p.price);
@@ -96,7 +98,7 @@ export default async function PropertyPage({ params }: PageProps<"/imovel/[slug]
   );
 
   return (
-    <div className={cn("min-h-dvh bg-surface", available && "pb-[calc(5.25rem+env(safe-area-inset-bottom))] lg:pb-0")}>
+    <div className={cn("min-h-dvh bg-surface", contactable && "pb-[calc(5.25rem+env(safe-area-inset-bottom))] lg:pb-0")}>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }} />
       {available && <TrackPageView propertyId={p.id} />}
 
@@ -177,7 +179,18 @@ export default async function PropertyPage({ params }: PageProps<"/imovel/[slug]
         </main>
 
         <aside className="flex flex-col gap-10 lg:sticky lg:top-8 lg:self-start">
-          {available && (
+          {available && !contactable && (
+            <section aria-labelledby="interesse" className="flex flex-col gap-4 rounded-panel border border-line bg-surface-sunken p-6">
+              <div className="hidden lg:block">{priceBlock("ink")}</div>
+              <h2 id="interesse" className="text-base font-semibold text-ink">
+                Contato indisponível no momento
+              </h2>
+              <p role="status" className="text-[0.9375rem] leading-relaxed text-ink-muted">
+                O corretor está sem um canal de atendimento ativo. Tente novamente mais tarde.
+              </p>
+            </section>
+          )}
+          {contactable && (
             <section aria-labelledby="interesse" className="flex flex-col gap-5 rounded-panel bg-brand p-6 text-white shadow-raised">
               <div className="hidden lg:block">{priceBlock("onBrand")}</div>
               <h2 id="interesse" className="sr-only">
@@ -216,7 +229,7 @@ export default async function PropertyPage({ params }: PageProps<"/imovel/[slug]
         </div>
       </footer>
 
-      {available && <StickyCta href={interestHref} price={price} priceSuffix={isRent ? "por mês" : undefined} />}
+      {contactable && <StickyCta href={interestHref} price={price} priceSuffix={isRent ? "por mês" : undefined} />}
     </div>
   );
 }

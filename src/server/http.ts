@@ -1,5 +1,5 @@
 import "server-only";
-import { NotFoundError, RateLimitError, ValidationError } from "./errors";
+import { ConflictError, NotFoundError, RateLimitError, ValidationError } from "./errors";
 import { checkRateLimit } from "./rate-limit";
 
 /**
@@ -26,6 +26,7 @@ export async function readJson(request: Request): Promise<unknown> {
 export function errorResponse(e: unknown): Response {
   if (e instanceof ValidationError) return Response.json({ message: e.message, fieldErrors: e.fieldErrors }, { status: 422 });
   if (e instanceof NotFoundError) return Response.json({ message: e.message }, { status: 404 });
+  if (e instanceof ConflictError) return Response.json({ message: e.message }, { status: 409 });
   if (e instanceof RateLimitError) return Response.json({ message: e.message }, { status: 429 });
   console.error(e);
   return Response.json({ message: "Algo deu errado. Tente novamente." }, { status: 500 });

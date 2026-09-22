@@ -14,6 +14,13 @@ const attributionSchema = z
   })
   .default({});
 
+/** Id aleatório do navegador (UUID). Recusa valores genéricos como "anon", que misturariam visitantes. */
+const visitorIdSchema = z
+  .string()
+  .regex(/^[A-Za-z0-9-]{8,64}$/, "Identificador de visitante inválido")
+  .refine((v) => v.toLowerCase() !== "anon", "Identificador de visitante inválido")
+  .optional();
+
 export const startLeadSchema = z.object({
   propertyId: z.string().min(1).max(50),
   name: z.string().trim().min(2, "Informe seu nome").max(100),
@@ -34,7 +41,7 @@ export const startLeadSchema = z.object({
     .transform((v) => v || null)
     .pipe(z.union([z.null(), z.email("E-mail inválido")])),
   consent: z.literal(true, "É preciso concordar para continuar"),
-  visitorId: z.string().max(64).optional(),
+  visitorId: visitorIdSchema,
   landingUrl: z.string().max(1000).optional(),
   attribution: attributionSchema,
 });
@@ -55,6 +62,6 @@ export const answersSchema = z.object({
 export const publicEventSchema = z.object({
   propertyId: z.string().min(1).max(50),
   type: z.enum(["PAGE_VIEW", "QUESTIONNAIRE_START"]),
-  visitorId: z.string().max(64).optional(),
+  visitorId: visitorIdSchema,
   attribution: attributionSchema,
 });

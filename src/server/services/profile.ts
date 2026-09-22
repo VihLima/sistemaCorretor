@@ -20,6 +20,13 @@ export async function getProfile(ctx: Ctx) {
 export async function updateProfile(ctx: Ctx, input: unknown) {
   const data = parseOrThrow(profileSchema, input);
   await getProfile(ctx);
+  if (!data.whatsapp) {
+    const published = await db.property.count({ where: { accountId: ctx.accountId, agentId: ctx.userId, status: "PUBLISHED" } });
+    if (published > 0) {
+      const msg = "Pause ou arquive seus imóveis publicados antes de remover o WhatsApp.";
+      throw new ValidationError({ whatsapp: msg }, msg);
+    }
+  }
   await db.user.update({ where: { id: ctx.userId, accountId: ctx.accountId }, data });
 }
 

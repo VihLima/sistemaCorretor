@@ -100,4 +100,19 @@ describe("visitor id", () => {
     expect(id).toMatch(UUID);
     expect(getVisitorId()).toBe(id);
   });
+
+  it("falls back to a random per-page-load id when localStorage is unavailable", () => {
+    vi.stubGlobal("localStorage", {
+      getItem() {
+        throw new Error("blocked");
+      },
+      setItem() {
+        throw new Error("blocked");
+      },
+    });
+    const id = getVisitorId();
+    expect(id).toMatch(UUID);
+    expect(id).not.toBe("anon");
+    expect(getVisitorId()).toBe(id);
+  });
 });

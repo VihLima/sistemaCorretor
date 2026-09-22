@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { NotFoundError } from "@/server/errors";
+import { NotFoundError, ValidationError } from "@/server/errors";
 import { getProfile, updateProfile, updateProfilePhoto } from "@/server/services/profile";
+import { setPropertyStatus } from "@/server/services/properties";
 import { PNG_1PX } from "../fixtures/images";
-import { makeAgent } from "./helpers";
+import { makeAgent, makePublishedProperty } from "./helpers";
 
 describe("perfil", () => {
   it("normaliza WhatsApp e Instagram", async () => {
@@ -18,6 +19,19 @@ describe("perfil", () => {
       fieldErrors: { whatsapp: expect.any(String) },
     });
   });
+  it("não remove o WhatsApp enquanto houver imóvel publicado", async () => {
+    const ctx = await makeAgent();
+    const p = await makePublishedProperty(ctx);
+    const err = await updateProfile(ctx, { name: "Ana", whatsapp: "" }).catch((e) => e);
+    expect(err).toBeInstanceOf(ValidationError);
+    expect(err.fieldErrors.whatsapp).toMatch(/Pause ou arquive/);
+    expect((await getProfile(ctx)).whatsapp).toBe("5567999990000");
+
+    await setPropertyStatus(ctx, p.id, "PAUSED");
+    await updateProfile(ctx, { name: "Ana", whatsapp: "" });
+    expect((await getProfile(ctx)).whatsapp).toBeNull();
+  });
+
   it("salva foto", async () => {
     const ctx = await makeAgent();
     await updateProfilePhoto(ctx, { data: PNG_1PX });

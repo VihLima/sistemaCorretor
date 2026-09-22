@@ -33,15 +33,20 @@ export function randomId(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
+/** Fallback quando o localStorage está indisponível: um id por carregamento de página, nunca compartilhado. */
+let pageLoadVisitorId: string | undefined;
+
 export function getVisitorId(): string {
-  return safe(() => {
+  try {
     let id = localStorage.getItem(VISITOR_KEY);
     if (!id) {
       id = randomId();
       localStorage.setItem(VISITOR_KEY, id);
     }
     return id;
-  }, "anon");
+  } catch {
+    return (pageLoadVisitorId ??= randomId());
+  }
 }
 
 /**
