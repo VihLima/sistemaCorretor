@@ -1,0 +1,308 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  OWNER
+  AGENT
+}
+
+enum PropertyType {
+  HOUSE
+  APARTMENT
+  TOWNHOUSE
+  LAND
+  COMMERCIAL
+  OTHER
+}
+
+enum PropertyPurpose {
+  SALE
+  RENT
+}
+
+enum PropertyStatus {
+  DRAFT
+  PUBLISHED
+  PAUSED
+  SOLD
+  RENTED
+}
+
+enum QuestionType {
+  TEXT
+  NUMBER
+  SINGLE_CHOICE
+  MULTI_CHOICE
+  YES_NO
+}
+
+enum LeadClassification {
+  HIGH
+  MEDIUM
+  LOW
+  UNRATED
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  NEGOTIATING
+  VISIT_SCHEDULED
+  PROPOSAL
+  CONVERTED
+  LOST
+}
+
+enum Channel {
+  INSTAGRAM
+  FACEBOOK
+  GOOGLE
+  QR_CODE
+  DIRECT
+  OTHER
+}
+
+enum AnalyticsEventType {
+  PAGE_VIEW
+  QUESTIONNAIRE_START
+  QUESTIONNAIRE_COMPLETE
+  WHATSAPP_CLICK
+}
+
+model Account {
+  id             String           @id @default(cuid())
+  name           String
+  createdAt      DateTime         @default(now())
+  users          User[]
+  properties     Property[]
+  questionnaires Questionnaire[]
+  leads          Lead[]
+  events         AnalyticsEvent[]
+}
+
+model User {
+  id           String     @id @default(cuid())
+  accountId    String
+  account      Account    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  name         String
+  email        String     @unique
+  passwordHash String
+  role         UserRole   @default(OWNER)
+  photoUrl     String?
+  photoKey     String?
+  creci        String?
+  phone        String?
+  whatsapp     String?
+  bio          String?
+  agencyName   String?
+  instagramUrl String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  sessions     Session[]
+  properties   Property[]
+  notes        LeadNote[]
+  statusChanges LeadStatusHistory[]
+
+  @@index([accountId])
+}
+
+model Session {
+  id        String   @id // SHA-256 do token
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Property {
+  id             String          @id @default(cuid())
+  accountId      String
+  account        Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  agentId        String
+  agent          User            @relation(fields: [agentId], references: [id], onDelete: Restrict)
+  slug           String          @unique
+  title          String
+  type           PropertyType
+  purpose        PropertyPurpose
+  price          Int
+  condoFee       Int?
+  iptu           Int?
+  city           String
+  neighborhood   String
+  address        String?
+  showAddress    Boolean         @default(false)
+  bedrooms       Int?
+  suites         Int?
+  bathrooms      Int?
+  parkingSpots   Int?
+  builtArea      Float?
+  landArea       Float?
+  description    String
+  highlights     String[]
+  financingInfo  String?
+  status         PropertyStatus  @default(DRAFT)
+  publishedAt    DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  images         PropertyImage[]
+  questionnaires Questionnaire[]
+  leads          Lead[]
+  events         AnalyticsEvent[]
+
+  @@index([accountId, status])
+}
+
+model PropertyImage {
+  id         String   @id @default(cuid())
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  url        String
+  storageKey String
+  position   Int
+  createdAt  DateTime @default(now())
+
+  @@index([propertyId, position])
+}
+
+model Questionnaire {
+  id         String     @id @default(cuid())
+  accountId  String
+  account    Account    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  propertyId String? // nulo = padrão da conta
+  property   Property?  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  name       String
+  isDefault  Boolean    @default(false)
+  createdAt  DateTime   @default(now())
+  questions  Question[]
+
+  @@index([accountId])
+}
+
+model Question {
+  id              String           @id @default(cuid())
+  questionnaireId String
+  questionnaire   Questionnaire    @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
+  label           String
+  type            QuestionType
+  required        Boolean          @default(true)
+  isVisitIntent   Boolean          @default(false)
+  position        Int
+  showIf          Json? // { questionId, optionIds[] } — reservado p/ perguntas condicionais
+  options         QuestionOption[]
+  answers         LeadAnswer[]
+
+  @@index([questionnaireId, position])
+}
+
+model QuestionOption {
+  id         String   @id @default(cuid())
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  label      String
+  weight     Int      @default(0)
+  position   Int
+}
+
+model Lead {
+  id                String              @id @default(cuid())
+  accountId         String
+  account           Account             @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  propertyId        String
+  property          Property            @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  publicToken       String              @unique
+  name              String
+  phone             String
+  email             String?
+  consentAt         DateTime
+  consentText       String
+  score             Int                 @default(0)
+  maxScore          Int                 @default(0)
+  classification    LeadClassification  @default(UNRATED)
+  status            LeadStatus          @default(NEW)
+  isComplete        Boolean             @default(false)
+  completedAt       DateTime?
+  wantsVisit        Boolean             @default(false)
+  channel           Channel             @default(DIRECT)
+  utmSource         String?
+  utmMedium         String?
+  utmCampaign       String?
+  utmContent        String?
+  utmTerm           String?
+  referrer          String?
+  landingUrl        String?
+  visitorId         String?
+  whatsappClickedAt DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  answers           LeadAnswer[]
+  notes             LeadNote[]
+  history           LeadStatusHistory[]
+
+  @@index([accountId, createdAt])
+  @@index([propertyId, phone])
+}
+
+model LeadAnswer {
+  id            String    @id @default(cuid())
+  leadId        String
+  lead          Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  questionId    String?
+  question      Question? @relation(fields: [questionId], references: [id], onDelete: SetNull)
+  questionLabel String
+  position      Int
+  value         Json
+  displayValue  String
+  points        Int       @default(0)
+
+  @@index([leadId])
+}
+
+model LeadNote {
+  id        String   @id @default(cuid())
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  authorId  String?
+  author    User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([leadId])
+}
+
+model LeadStatusHistory {
+  id          String      @id @default(cuid())
+  leadId      String
+  lead        Lead        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  fromStatus  LeadStatus?
+  toStatus    LeadStatus
+  changedById String?
+  changedBy   User?       @relation(fields: [changedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime    @default(now())
+
+  @@index([leadId])
+}
+
+model AnalyticsEvent {
+  id         String             @id @default(cuid())
+  accountId  String
+  account    Account            @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  propertyId String
+  property   Property           @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  type       AnalyticsEventType
+  visitorId  String?
+  channel    Channel            @default(DIRECT)
+  utmSource  String?
+  utmCampaign String?
+  createdAt  DateTime           @default(now())
+
+  @@index([accountId, type, createdAt])
+  @@index([propertyId, type])
+}
