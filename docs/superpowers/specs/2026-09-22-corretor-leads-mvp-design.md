@@ -24,7 +24,7 @@ A arquitetura já é multi-tenant (SaaS), mas sem funcionalidades além do neces
 - PWA: manifest + service worker simples (instalável; sem modo offline completo)
 - QR Code: biblioteca `qrcode` (geração de PNG no servidor)
 - Testes: Vitest (unidade + integração com Postgres de teste), Playwright (E2E)
-- Local: Postgres via `docker compose`
+- Local: PostgreSQL 17 instalado nativamente no Windows (Docker indisponível nesta máquina)
 - Produção: Vercel (app) + Supabase (Postgres + Storage)
 
 ## 3. Escopo do MVP

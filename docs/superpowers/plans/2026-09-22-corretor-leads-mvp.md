@@ -6,7 +6,7 @@
 
 **Architecture:** Single Next.js 16 (App Router) app. Pure business rules live in `src/domain` (no I/O, unit-tested). Data access + authorization live in `src/server/services` (every panel function takes a `Ctx` with `accountId` from the session; integration-tested against a real Postgres). UI in `src/app` + `src/components` is thin and calls services via server actions (panel) or JSON route handlers (public visitor flow).
 
-**Tech Stack:** Next.js 16.3 · React 19 · TypeScript 5 · Tailwind CSS 4 · Prisma 7.10 (`prisma-client` generator + `@prisma/adapter-pg`) · PostgreSQL 17 (Docker locally, Supabase in prod) · Zod 4 · bcryptjs 3 · qrcode · @supabase/supabase-js 2 · Vitest 4 · Playwright 1.63
+**Tech Stack:** Next.js 16.3 · React 19 · TypeScript 5 · Tailwind CSS 4 · Prisma 7.10 (`prisma-client` generator + `@prisma/adapter-pg`) · PostgreSQL 17 (native Windows install locally — Docker is unavailable on this machine; Supabase in prod) · Zod 4 · bcryptjs 3 · qrcode · @supabase/supabase-js 2 · Vitest 4 · Playwright 1.63
 
 **Spec:** `docs/superpowers/specs/2026-09-22-corretor-leads-mvp-design.md`
 
@@ -37,7 +37,6 @@
 ## File Structure
 
 ```
-docker-compose.yml, docker/init-test-db.sql      # local Postgres (dev + test DBs)
 prisma.config.ts, prisma/schema.prisma, prisma/seed.ts
 src/
   proxy.ts                                     # redirects unauthenticated /painel/* to /login
@@ -90,11 +89,12 @@ README.md  docs/{arquitetura,deploy,lgpd-pendencias}.md
 ### Task 1: Project scaffold and tooling
 
 **Files:**
-- Create: whole Next.js scaffold, `docker-compose.yml`, `docker/init-test-db.sql`, `.env.example`, `.env`, `vitest.config.ts`
+- Create: whole Next.js scaffold, `.env.example`, `.env`, `vitest.config.ts`
 - Modify: `package.json` (name + scripts), `.gitignore`
 
 **Interfaces:**
-- Produces: `npm run dev|build|test|test:unit|test:integration|db:up`, path alias `@/* → src/*`, local Postgres on `localhost:5433` with DBs `corretor` and `corretor_test`.
+- Produces: `npm run dev|build|test|test:unit|test:integration`, path alias `@/* → src/*`.
+- Environment (already done, do not redo): PostgreSQL 17 installed natively as Windows service `postgresql-x64-17` on `localhost:5432`; role `corretor`/`corretor` (CREATEDB) owns DBs `corretor` and `corretor_test`. `psql` at `C:/Program Files/PostgreSQL/17/bin/psql.exe`. **No Docker.**
 
 - [ ] **Step 1: Scaffold Next.js in a temp folder** (the project folder name has uppercase letters/accents, which are invalid npm names)
 
@@ -126,7 +126,6 @@ npm i -D prisma@7.10.0 vitest@^4.1 tsx @types/qrcode @playwright/test@1.63.0
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "test:e2e": "playwright test",
-    "db:up": "docker compose up -d db",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
@@ -135,36 +134,14 @@ npm i -D prisma@7.10.0 vitest@^4.1 tsx @types/qrcode @playwright/test@1.63.0
 }
 ```
 
-- [ ] **Step 4: Docker Postgres**
-
-`docker-compose.yml`:
-```yaml
-services:
-  db:
-    image: postgres:17-alpine
-    environment:
-      POSTGRES_USER: corretor
-      POSTGRES_PASSWORD: corretor
-      POSTGRES_DB: corretor
-    ports:
-      - "5433:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./docker/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
-volumes:
-  pgdata: {}
-```
-`docker/init-test-db.sql`:
-```sql
-CREATE DATABASE corretor_test;
-```
+- [ ] **Step 4: (removed — Postgres is installed natively; nothing to do)**
 
 - [ ] **Step 5: Env files**
 
 `.env.example` (commit) and `.env` (copy, gitignored):
 ```
-DATABASE_URL="postgresql://corretor:corretor@localhost:5433/corretor"
-TEST_DATABASE_URL="postgresql://corretor:corretor@localhost:5433/corretor_test"
+DATABASE_URL="postgresql://corretor:corretor@localhost:5432/corretor"
+TEST_DATABASE_URL="postgresql://corretor:corretor@localhost:5432/corretor_test"
 APP_URL="http://localhost:3000"
 # local | supabase  (tests force "memory")
 STORAGE_DRIVER="local"
@@ -224,16 +201,15 @@ export default defineConfig({
 - [ ] **Step 7: Verify**
 
 ```bash
-docker compose up -d db
-docker compose exec db psql -U corretor -c "\l" | grep corretor_test
-npm run build
+PGPASSWORD=corretor "/c/Program Files/PostgreSQL/17/bin/psql.exe" -U corretor -h localhost -d corretor_test -c "select 1"
+npx next build
 ```
-Expected: `corretor_test` listed; Next build succeeds (the `prisma generate` part will fail until Task 5 — for this step run `npx next build` instead).
+Expected: query returns 1; Next build succeeds (the `prisma generate` part will fail until Task 5 — for this step run `npx next build` instead).
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add -A && git commit -m "chore: scaffold Next.js 16, Tailwind, Vitest e Postgres via Docker"
+git add -A && git commit -m "chore: scaffold Next.js 16, Tailwind e Vitest"
 ```
 
 ---
@@ -1533,7 +1509,7 @@ describe("banco de teste", () => {
 });
 ```
 
-- [ ] **Step 7: Run** `npx vitest run --project integration` → PASS (requires `docker compose up -d db`).
+- [ ] **Step 7: Run** `npx vitest run --project integration` → PASS (requires the `postgresql-x64-17` Windows service running).
 
 - [ ] **Step 8: Commit** — `git add -A && git commit -m "feat(db): schema Prisma, cliente e harness de testes de integração"`
 
@@ -3715,7 +3691,7 @@ export async function getAppUrl(): Promise<string> {
   - `/painel/imoveis/[id]`: `notFound()` on `NotFoundError`. Sections: (1) **StatusControl** — current status badge + contextual buttons (Rascunho/Pausado → "Publicar"; Publicado → "Pausar", "Marcar como vendido/alugado" per purpose; Vendido/Alugado → "Republicar"), showing `FormState.message` errors like "Cadastre seu WhatsApp…" with a link to `/painel/perfil`; (2) **SharePanel** (only when published): public URL with copy button, link variants for Instagram/Facebook/Google (`?utm_source=instagram&utm_medium=social` etc.) each with copy, QR preview `<img src="/painel/imoveis/{id}/qrcode">` + "Baixar QR Code" (`?download=1`), "Abrir página"; (3) **PhotoManager**; (4) **PropertyForm** (edit); (5) danger zone "Excluir imóvel" (shows ConflictError message if it has leads).
   - `PropertyForm` (client, `useActionState`): grouped sections — Básico (título, tipo, finalidade, preço, condomínio, IPTU), Localização (cidade, bairro, endereço + checkbox "Mostrar endereço completo na página"), Características (quartos, suítes, banheiros, vagas, área construída, área do terreno), Descrição (descrição, diferenciais — textarea "um por linha", financiamento). Money inputs `inputMode="numeric"`; counts `inputMode="numeric"`; field errors from `state.fieldErrors[name]`; keep typed values on error (use `defaultValue` from last submitted `FormData` echoed in state or keep inputs uncontrolled and don't reset: pass `key` stable). Sticky save bar on mobile.
 
-- [ ] **Step 6: Verify manually** — create property, upload 3 photos from disk (check resize: network payload < 1 MB), reorder, set cover, try publishing without WhatsApp (error + link), set WhatsApp directly in DB or wait for Task 14 (`docker compose exec db psql -U corretor -c "update \"User\" set whatsapp='5567999990000'"`), publish, copy link, download QR, scan QR with phone camera shows URL. `npx next build` + `npm run lint` pass.
+- [ ] **Step 6: Verify manually** — create property, upload 3 photos from disk (check resize: network payload < 1 MB), reorder, set cover, try publishing without WhatsApp (error + link), set WhatsApp directly in DB or wait for Task 14 (`PGPASSWORD=corretor "/c/Program Files/PostgreSQL/17/bin/psql.exe" -U corretor -h localhost -d corretor -c "update \"User\" set whatsapp='5567999990000'"`), publish, copy link, download QR, scan QR with phone camera shows URL. `npx next build` + `npm run lint` pass.
 
 - [ ] **Step 7: Commit** — `git add -A && git commit -m "feat(ui): gestão de imóveis, fotos, publicação e QR Code"`
 
@@ -4192,7 +4168,7 @@ npm run test:e2e
 Expected: 1 passed. Fix any UI/selector mismatch in the app (prefer fixing accessibility labels over loosening the test).
 
 - [ ] **Step 4: Docs**
-  - `README.md` (PT-BR): what it is (funil), screenshots placeholder list removed — instead a short feature list; requisitos (Node 20+, Docker); **Rodando localmente**: `npm install` → `cp .env.example .env` → `npm run db:up` → `npm run db:migrate` → `npm run db:seed` → `npm run dev` → login `ana@exemplo.com / demo12345`; criar usuário (via /cadastro); scripts table; testes (`npm run test:unit`, `npm run test:integration` — needs Docker DB, `npm run test:e2e`); estrutura de pastas; links to docs.
+  - `README.md` (PT-BR): what it is (funil), screenshots placeholder list removed — instead a short feature list; requisitos (Node 20+, PostgreSQL 17 — instalação nativa, ex.: `winget install PostgreSQL.PostgreSQL.17`, criando role/bancos `corretor` e `corretor_test` com os comandos SQL documentados; Docker opcional); **Rodando localmente**: `npm install` → `cp .env.example .env` → `npm run db:migrate` → `npm run db:seed` → `npm run dev` → login `ana@exemplo.com / demo12345`; criar usuário (via /cadastro); scripts table; testes (`npm run test:unit`, `npm run test:integration` — needs local Postgres, `npm run test:e2e`); estrutura de pastas; links to docs.
   - `docs/arquitetura.md`: layers (domain / services / app), multi-tenancy rule (`Ctx`), public flow sequence (page view → start lead → answers → handoff → click), scoring rules, data model summary, extension points (condicionais via `showIf`, questionário por imóvel via `Questionnaire.propertyId`, `LeadHandoffChannel`, `StorageProvider`, equipes via `Account`/`UserRole`).
   - `docs/deploy.md`: Supabase (create project; Database → connection strings: use **Transaction pooler** URL with `?pgbouncer=true&connection_limit=1` as `DATABASE_URL` in Vercel and the **direct/session** URL to run `DATABASE_URL=<direct> npx prisma migrate deploy` from your machine; Storage → create public bucket `property-images`; copy service role key), Vercel (import repo, env vars `DATABASE_URL`, `APP_URL=https://<domínio>`, `STORAGE_DRIVER=supabase`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_BUCKET`; build command default `npm run build`), post-deploy checklist (create account, publish test property, run the flow from a phone, check Open Graph with WhatsApp link preview), note that the in-memory rate limit is per instance (swap for Upstash later), custom domain.
   - `docs/lgpd-pendencias.md`: implemented technical measures (consent checkbox + text snapshot + timestamp, no IP storage, per-account isolation, hashed passwords/sessions, lead deletion, minimal data) and **items for legal review**: política de privacidade final, papéis controlador/operador entre plataforma e corretor, base legal, prazo de retenção e rotina de expurgo, termos de uso para corretores, contrato de tratamento de dados, canal do encarregado (DPO), resposta a solicitações de titulares, transferência internacional (Vercel/Supabase regions), cookies/armazenamento local.
