@@ -61,7 +61,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
               </span>
             </div>
           </div>
-          <figcaption className="mt-3 text-right text-sm text-white/60">Exemplo de contato recebido</figcaption>
+          <figcaption className="mt-3 text-right text-sm text-white/80">Exemplo de contato recebido</figcaption>
         </figure>
       </aside>
     </div>

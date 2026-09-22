@@ -18,7 +18,7 @@
   --color-surface-sunken: #f5f5f1;
   --color-ink: #16292a;
   --color-ink-muted: #526366;
-  --color-ink-faint: #7f8d8f;
+  --color-ink-faint: #5c6c6f; /* ≥ 4.5:1 em surface, surface-sunken e canvas */
   --color-line: #dadbd3;
   --color-line-strong: #bfc2b9;
 

@@ -13,7 +13,7 @@ export type SubmitButtonProps = Omit<ButtonProps, "type"> & {
 export function SubmitButton({ children, pendingLabel, disabled, ...props }: SubmitButtonProps) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" disabled={pending || disabled} {...props}>
+    <Button type="submit" disabled={pending || disabled} aria-busy={pending || undefined} {...props}>
       {pending ? (
         <>
           <Spinner label="Enviando" />

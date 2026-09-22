@@ -21,13 +21,13 @@ export function BottomNav() {
                 href={href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "relative flex h-16 flex-col items-center justify-center gap-1 text-[0.6875rem] leading-none",
+                  "relative flex h-16 flex-col items-center justify-center gap-1 text-[0.625rem] leading-none tracking-[-0.01em] min-[360px]:text-[0.6875rem] min-[360px]:tracking-normal",
                   active ? "font-semibold text-brand" : "text-ink-muted",
                 )}
               >
                 {active && <span aria-hidden className="absolute top-0 h-[3px] w-8 rounded-b-full bg-brand" />}
                 <Icon aria-hidden className="size-[1.35rem]" strokeWidth={active ? 2.2 : 1.8} />
-                <span className="max-w-full truncate px-0.5">{label}</span>
+                <span className="max-w-full truncate">{label}</span>
               </Link>
             </li>
           );
