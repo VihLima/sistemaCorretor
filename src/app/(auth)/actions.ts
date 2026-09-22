@@ -1,15 +1,19 @@
 "use server";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { FormState } from "@/lib/form-state";
 import { runAction } from "@/server/action";
 import { clearSessionCookie, getCurrentUser, SESSION_COOKIE, setSessionCookie } from "@/server/auth/current";
-import { createSession, deleteSession } from "@/server/auth/session";
+import { guardLogin, guardSignup } from "@/server/auth/rate-limits";
+import { createSession, deleteExpiredSessions, deleteSession } from "@/server/auth/session";
+import { clientIpFromHeaders } from "@/server/http";
 import { authenticate, signup } from "@/server/services/accounts";
-import { cookies } from "next/headers";
 
 export async function signupAction(_: FormState, formData: FormData): Promise<FormState> {
   let ok = false;
+  const ip = clientIpFromHeaders(await headers());
   const state = await runAction(async () => {
+    guardSignup(ip);
     const ctx = await signup(Object.fromEntries(formData));
     const { token, expiresAt } = await createSession(ctx.userId);
     await setSessionCookie(token, expiresAt);
@@ -21,9 +25,12 @@ export async function signupAction(_: FormState, formData: FormData): Promise<Fo
 
 export async function loginAction(_: FormState, formData: FormData): Promise<FormState> {
   let ok = false;
+  const ip = clientIpFromHeaders(await headers());
   const state = await runAction(async () => {
+    guardLogin(ip, formData.get("email"));
     const ctx = await authenticate(Object.fromEntries(formData));
     if (!ctx) return;
+    await deleteExpiredSessions().catch((e) => console.error(e));
     const { token, expiresAt } = await createSession(ctx.userId);
     await setSessionCookie(token, expiresAt);
     ok = true;

@@ -30,3 +30,8 @@ export async function getSessionUser(token: string | undefined): Promise<Session
 export async function deleteSession(token: string) {
   await db.session.deleteMany({ where: { id: hashToken(token) } });
 }
+
+/** Limpeza oportunista (chamada a cada login bem-sucedido): remove sessões vencidas de todos os usuários. */
+export async function deleteExpiredSessions() {
+  await db.session.deleteMany({ where: { expiresAt: { lt: new Date() } } });
+}

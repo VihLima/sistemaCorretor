@@ -7,8 +7,12 @@ import { checkRateLimit } from "./rate-limit";
  * Em produção dependemos da plataforma definir `x-forwarded-for` (a Vercel define e sobrescreve o valor
  * enviado pelo cliente); "local" é o fallback do ambiente de desenvolvimento, onde não há proxy.
  */
+export function clientIpFromHeaders(headers: Headers) {
+  return headers.get("x-forwarded-for")?.split(",")[0]?.trim() || headers.get("x-real-ip") || "local";
+}
+
 export function clientIp(request: Request) {
-  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "local";
+  return clientIpFromHeaders(request.headers);
 }
 
 export function enforceRateLimit(request: Request, bucket: string, limit: number, windowMs: number) {

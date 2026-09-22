@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createSession, deleteSession, getSessionUser } from "@/server/auth/session";
+import { createSession, deleteExpiredSessions, deleteSession, getSessionUser } from "@/server/auth/session";
 import { db } from "@/server/db";
 import { ValidationError } from "@/server/errors";
 import { authenticate, signup } from "@/server/services/accounts";
@@ -61,5 +61,15 @@ describe("sessões", () => {
     expect(await getSessionUser(token)).toBeNull();
     expect(await getSessionUser("inexistente")).toBeNull();
     expect(await getSessionUser(undefined)).toBeNull();
+  });
+  it("limpa apenas sessões vencidas", async () => {
+    const ctx = await signup(valid);
+    const expired = await createSession(ctx.userId);
+    await db.session.updateMany({ data: { expiresAt: new Date(Date.now() - 1000) } });
+    const { token } = await createSession(ctx.userId);
+    await deleteExpiredSessions();
+    expect(await db.session.count()).toBe(1);
+    expect(await getSessionUser(token)).not.toBeNull();
+    expect(await getSessionUser(expired.token)).toBeNull();
   });
 });
