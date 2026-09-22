@@ -86,6 +86,27 @@ describe("fotos", () => {
   });
 });
 
+describe("regras de publicação", () => {
+  it("recusa situação inválida", async () => {
+    const ctx = await makeAgent();
+    const p = await createProperty(ctx, propertyInput());
+    await expect(setPropertyStatus(ctx, p.id, "DELETED")).rejects.toBeInstanceOf(ValidationError);
+    await expect(setPropertyStatus(ctx, p.id, undefined)).rejects.toBeInstanceOf(ValidationError);
+    expect((await getProperty(ctx, p.id)).status).toBe("DRAFT");
+  });
+
+  it("não remove a última foto de imóvel publicado", async () => {
+    const ctx = await makeAgent();
+    const p = await makePublishedProperty(ctx);
+    const [only] = (await getProperty(ctx, p.id)).images;
+    await expect(removePropertyImage(ctx, only.id)).rejects.toThrow(/pelo menos uma foto/);
+    expect((await getProperty(ctx, p.id)).images).toHaveLength(1);
+    await setPropertyStatus(ctx, p.id, "PAUSED");
+    await removePropertyImage(ctx, only.id);
+    expect((await getProperty(ctx, p.id)).images).toHaveLength(0);
+  });
+});
+
 describe("exclusão", () => {
   it("bloqueia exclusão de imóvel com contatos", async () => {
     const ctx = await makeAgent();

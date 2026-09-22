@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { z } from "zod";
 import { slugify, uniqueSlug } from "@/domain/slug";
-import type { PropertyStatus } from "@/domain/types";
+import { PROPERTY_STATUSES } from "@/domain/types";
 import { parseOrThrow } from "@/lib/validation/parse";
 import { propertySchema } from "@/lib/validation/property";
 import type { Ctx } from "@/server/context";
@@ -12,6 +13,7 @@ import { MAX_IMAGE_BYTES } from "./profile";
 
 export const MAX_IMAGES = 20;
 const imagesOrdered = { orderBy: { position: "asc" as const } };
+const statusSchema = z.enum(PROPERTY_STATUSES, "Situação inválida");
 
 export async function listProperties(ctx: Ctx) {
   return db.property.findMany({
@@ -45,7 +47,10 @@ export async function updateProperty(ctx: Ctx, id: string, input: unknown) {
   return db.property.update({ where: { id }, data });
 }
 
-export async function setPropertyStatus(ctx: Ctx, id: string, status: PropertyStatus) {
+export async function setPropertyStatus(ctx: Ctx, id: string, input: unknown) {
+  const parsed = statusSchema.safeParse(input);
+  if (!parsed.success) throw new ValidationError({ status: "Situação inválida" }, "Situação inválida");
+  const status = parsed.data;
   const property = await getProperty(ctx, id);
   if (status === "PUBLISHED") {
     const agent = await db.user.findUniqueOrThrow({ where: { id: property.agentId } });
@@ -90,6 +95,11 @@ export async function addPropertyImage(ctx: Ctx, propertyId: string, file: { dat
 export async function removePropertyImage(ctx: Ctx, imageId: string) {
   const image = await db.propertyImage.findFirst({ where: { id: imageId, property: { accountId: ctx.accountId } } });
   if (!image) throw new NotFoundError("Foto");
+  const property = await db.property.findUniqueOrThrow({ where: { id: image.propertyId }, include: { _count: { select: { images: true } } } });
+  if (property.status === "PUBLISHED" && property._count.images <= 1) {
+    const msg = "Um imóvel publicado precisa de pelo menos uma foto. Pause-o antes de remover a última.";
+    throw new ValidationError({ _form: msg }, msg);
+  }
   await db.propertyImage.delete({ where: { id: imageId } });
   const remaining = await db.propertyImage.findMany({ where: { propertyId: image.propertyId }, ...imagesOrdered });
   await db.$transaction(remaining.map((img, i) => db.propertyImage.update({ where: { id: img.id }, data: { position: i } })));
