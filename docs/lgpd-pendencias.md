@@ -13,6 +13,12 @@ e o que ainda precisa de revisão jurídica antes de operar com dados reais de v
   (nem no `Lead`, nem no `AnalyticsEvent`, nem em log de aplicação). O identificador do visitante
   (`visitorId`) é um UUID aleatório gerado no navegador e guardado em `localStorage` (não em
   cookie), sem nenhum vínculo com IP ou dispositivo além do que o próprio navegador guarda.
+  O IP é usado apenas em memória, como chave do limitador de tentativas (formulário público,
+  login e cadastro), e nunca é gravado.
+- **Logs da plataforma de hospedagem**: embora a aplicação não grave IPs, a infraestrutura
+  (logs de requisição da Vercel, logs do Supabase/Postgres e do storage) pode registrar o IP e o
+  user-agent de cada requisição por conta própria, com retenção definida pelo provedor. Isso deve
+  constar da política de privacidade e do registro de operações de tratamento.
 - **Isolamento por conta**: todo dado do painel é filtrado por `accountId` da sessão autenticada;
   tentar acessar um registro de outra conta retorna "não encontrado" (nunca confirma que o
   registro existe). Ver `docs/arquitetura.md` → "Multi-tenancy".

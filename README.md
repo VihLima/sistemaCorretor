@@ -58,6 +58,13 @@ do seed), use:
 
 Para criar sua própria conta, acesse [http://localhost:3000/cadastro](http://localhost:3000/cadastro).
 
+### Dados de exemplo
+
+`npm run db:seed` apaga e recria a conta de exemplo. Por segurança ele se recusa a rodar quando
+`NODE_ENV=production` ou quando o host da `DATABASE_URL` não é `localhost`/`127.0.0.1`. Para
+forçar (por exemplo, popular de propósito um banco de demonstração remoto), rode com
+`ALLOW_SEED=1 npm run db:seed`.
+
 ### Variáveis de ambiente
 
 Veja `.env.example` — todas as variáveis lidas pela aplicação estão lá, com valores de exemplo.
@@ -68,7 +75,9 @@ Em resumo:
 | `DATABASE_URL` | String de conexão do PostgreSQL de desenvolvimento. |
 | `TEST_DATABASE_URL` | String de conexão do PostgreSQL usado pelos testes de integração e e2e (`corretor_test`). |
 | `APP_URL` | URL pública da aplicação (usada para montar links absolutos, Open Graph etc.). |
-| `STORAGE_DRIVER` | `local` (arquivos em disco, padrão em dev) ou `supabase` (produção — ver `docs/deploy.md`). |
+| `DATABASE_POOL_MAX` | Opcional. Conexões por instância no pool do PostgreSQL (padrão `5`). |
+| `STORAGE_DRIVER` | `local` (arquivos em disco, padrão em dev) ou `supabase` (produção — ver `docs/deploy.md`). Com `NODE_ENV=production` o driver `local` é recusado, a menos que `ALLOW_LOCAL_STORAGE=1` (usado só pelo e2e). |
+| `ALLOW_SEED` | Defina `1` para permitir `npm run db:seed` fora de um banco local (ver "Dados de exemplo"). |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_BUCKET` | Só necessárias com `STORAGE_DRIVER=supabase`. |
 
 ## Scripts
@@ -79,17 +88,19 @@ Em resumo:
 | `npm run build` | Gera o cliente Prisma e cria o build de produção. |
 | `npm run start` | Roda o build de produção (`next start`). |
 | `npm run lint` | ESLint. |
-| `npm test` / `npm run test:unit` | Testes unitários (Vitest, sem banco). |
+| `npm test` | Todos os testes Vitest: unitários **e** de integração (precisa do PostgreSQL local e de `TEST_DATABASE_URL`). |
+| `npm run test:unit` | Só os testes unitários (Vitest, sem banco). |
 | `npm run test:integration` | Testes de integração (Vitest — precisa do PostgreSQL local, usa `TEST_DATABASE_URL`). |
 | `npm run test:e2e` | Teste end-to-end (Playwright — ver seção "Testes" abaixo). |
 | `npm run db:migrate` | Aplica migrações em desenvolvimento (`prisma migrate dev`). |
 | `npm run db:deploy` | Aplica migrações em produção/CI (`prisma migrate deploy`). |
-| `npm run db:seed` | Popula o banco com uma conta e imóveis de exemplo. |
+| `npm run db:seed` | Popula o banco com uma conta e imóveis de exemplo (só em banco local — ver "Dados de exemplo"). |
 | `npm run db:reset` | Reseta o banco de desenvolvimento (`prisma migrate reset --force`). |
 
 ## Testes
 
 ```bash
+npm test                  # unit + integração (precisa do PostgreSQL local e de TEST_DATABASE_URL)
 npm run test:unit         # regras de domínio (scoring, questionário, formatação...), sem banco
 npm run test:integration  # services do painel/público contra um PostgreSQL real (TEST_DATABASE_URL)
 npm run test:e2e          # fluxo completo no navegador (Playwright)
@@ -107,7 +118,10 @@ projeto, e é comum já ter um `npm run dev` rodando localmente na porta 3000. P
 (lida em `next.config.ts`) mandando a saída do build para `.next-e2e/`, uma pasta isolada do
 `.next/` do `next dev`. Isso evita qualquer conflito entre os dois servidores. `.next-e2e/` está
 no `.gitignore`. O `globalSetup` (`e2e/global-setup.ts`) aplica as migrações e limpa o
-`TEST_DATABASE_URL` antes de rodar o teste.
+`TEST_DATABASE_URL` antes de rodar o teste; por isso o e2e se recusa a rodar se
+`TEST_DATABASE_URL` não estiver definida ou for igual à `DATABASE_URL`. O servidor do e2e roda
+com `NODE_ENV=production` e `STORAGE_DRIVER=local`, então define `ALLOW_LOCAL_STORAGE=1` (opt-in
+explícito; em produção de verdade o driver local é recusado).
 
 Antes da primeira vez, instale o navegador do Playwright:
 

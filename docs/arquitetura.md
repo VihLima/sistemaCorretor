@@ -54,8 +54,18 @@ e as consultas só operam sobre imóveis com `status = PUBLISHED`.
 ```
 
 O `visitorId` é um UUID aleatório gerado e guardado em `localStorage` no navegador do visitante —
-nunca em cookie, nunca associado a IP. O `Lead.publicToken` permite ao próprio visitante retomar
-seu lead (recarregar a página, terminar depois) sem poder acessar o lead de outra pessoa.
+nunca em cookie, nunca associado a IP (se o `localStorage` estiver bloqueado, o navegador usa um id
+aleatório por carregamento de página; valores genéricos como `"anon"` são recusados pela API). O
+`Lead.publicToken` permite ao próprio visitante retomar seu lead (recarregar a página, terminar
+depois) sem poder acessar o lead de outra pessoa.
+
+Se o mesmo navegador reenviar o contato (mesmo imóvel, mesmo telefone **e mesmo `visitorId`**)
+dentro de 24 h enquanto o lead ainda está incompleto, a API devolve o lead existente (id + token)
+em vez de criar um duplicado. Quem conhece apenas o telefone de outra pessoa, mas tem outro
+`visitorId` (ou nenhum), sempre ganha um lead novo — nunca recebe o token nem altera o nome/e-mail
+do lead original. A conclusão do questionário é idempotente: o lead é marcado como completo com
+`updateMany({ where: { isComplete: false } })` dentro da transação, então envios concorrentes gravam
+respostas e o evento `QUESTIONNAIRE_COMPLETE` uma única vez.
 
 ## Pontuação e classificação
 
@@ -63,7 +73,7 @@ seu lead (recarregar a página, terminar depois) sem poder acessar o lead de out
 
 - Cada opção de pergunta de escolha (`SINGLE_CHOICE`, `MULTI_CHOICE`, `YES_NO`) tem um peso
   inteiro de 0 a 100 (`questionMaxPoints` soma os pesos positivos para `MULTI_CHOICE`, usa o
-  maior peson para `SINGLE_CHOICE`/`YES_NO`). Perguntas `TEXT`/`NUMBER` não pontuam.
+  maior peso para `SINGLE_CHOICE`/`YES_NO`). Perguntas `TEXT`/`NUMBER` não pontuam.
 - `score / maxScore` vira uma classificação: **≥ 60% → alta**, **≥ 30% → média**, abaixo → baixa.
   Sem perguntas pontuáveis ou lead incompleto → **sem classificação**.
 - A classificação é sempre mostrada com o aviso: **"Indicação baseada nas respostas — não é

@@ -7,8 +7,13 @@ Next.js).
 
 1. Crie um projeto em [supabase.com](https://supabase.com).
 2. **Database → Connection string**: você vai precisar de duas URLs:
-   - **Transaction pooler** (porta 6543) — usada pela aplicação em produção. Acrescente
-     `?pgbouncer=true&connection_limit=1` no final; essa é a `DATABASE_URL` que vai no Vercel.
+   - **Transaction pooler** (Supavisor, porta 6543) — usada pela aplicação em produção; essa é a
+     `DATABASE_URL` que vai no Vercel. A URL do pooler como o Supabase a entrega já basta: **não**
+     acrescente `?pgbouncer=true&connection_limit=1` (são parâmetros do motor de consultas antigo do
+     Prisma; o adaptador `@prisma/adapter-pg` usado aqui os ignora). O tamanho do pool por instância
+     é controlado por `DATABASE_POOL_MAX` (padrão 5, ver `src/server/db.ts`).
+   - **SSL**: o Supabase aceita (e recomenda) conexões com SSL. Se a URL copiada não trouxer
+     `?sslmode=require`, acrescente-o para garantir que a conexão seja criptografada.
    - **Direct connection / Session** (porta 5432) — usada só para rodar as migrações a partir da
      sua máquina (o pooler em modo transação não suporta os comandos que `prisma migrate deploy`
      precisa):
@@ -29,9 +34,10 @@ Next.js).
 
    | Variável | Valor |
    | --- | --- |
-   | `DATABASE_URL` | a URL do **Transaction pooler** do Supabase, com `?pgbouncer=true&connection_limit=1` |
-   | `APP_URL` | `https://<seu-domínio>` (o domínio que o Vercel atribuiu, ou o domínio próprio — ver abaixo) |
-   | `STORAGE_DRIVER` | `supabase` |
+   | `DATABASE_URL` | a URL do **Transaction pooler** do Supabase (Supavisor), sem outros parâmetros além de `sslmode=require` — configure para **Production e Preview** (ver observações) |
+   | `DATABASE_POOL_MAX` | opcional; conexões por instância no pool (padrão `5`) |
+   | `APP_URL` | `https://<seu-domínio>` (o domínio que o Vercel atribuiu, ou o domínio próprio — ver abaixo). Obrigatória em produção: sem ela, as páginas que geram links absolutos falham com erro explícito |
+   | `STORAGE_DRIVER` | `supabase` (em produção o driver `local` é recusado com erro explícito) |
    | `SUPABASE_URL` | a Project URL do Supabase |
    | `SUPABASE_SERVICE_ROLE_KEY` | a service role key |
    | `SUPABASE_BUCKET` | `property-images` |
@@ -56,6 +62,13 @@ Next.js).
 - [ ] Apagar a conta/imóvel de teste (ou deixar como demo, se preferir).
 
 ## Observações
+
+- **`DATABASE_URL` também nos builds de Preview**: `prisma.config.ts` lê `env("DATABASE_URL")`, que
+  falha se a variável não existir, e `npm run build` roda `prisma generate`. Por isso a variável
+  precisa estar configurada para os ambientes Production **e** Preview no Vercel (pode ser um banco
+  separado para Preview); senão os deploys de branch quebram no build.
+- **`ALLOW_LOCAL_STORAGE`**: não defina em produção. Existe só para o servidor de produção local
+  dos testes E2E (`playwright.config.ts`), que grava as fotos em disco.
 
 - **Limite de envio (rate limit)**: a proteção contra abuso do formulário público é em memória,
   por instância do processo. Em produção na Vercel (funções serverless, múltiplas instâncias),
