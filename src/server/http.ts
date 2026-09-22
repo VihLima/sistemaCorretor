@@ -2,6 +2,11 @@ import "server-only";
 import { NotFoundError, RateLimitError, ValidationError } from "./errors";
 import { checkRateLimit } from "./rate-limit";
 
+/**
+ * IP do cliente, usado só como chave do limitador em memória (nunca é gravado).
+ * Em produção dependemos da plataforma definir `x-forwarded-for` (a Vercel define e sobrescreve o valor
+ * enviado pelo cliente); "local" é o fallback do ambiente de desenvolvimento, onde não há proxy.
+ */
 export function clientIp(request: Request) {
   return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "local";
 }

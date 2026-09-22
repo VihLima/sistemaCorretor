@@ -10,12 +10,14 @@ import { Spinner } from "@/components/ui/Spinner";
 import { Textarea } from "@/components/ui/Textarea";
 import { isAnswered, visibleQuestions } from "@/domain/questionnaire";
 import type { AnswerMap, AnswerValue } from "@/domain/types";
-import { captureAttribution, getAttribution, getVisitorId, sendEvent } from "@/lib/tracking";
+import { captureAttribution, getAttribution, getVisitorId, sendEventOncePerSession } from "@/lib/tracking";
 import type { Handoff, PublicQuestion } from "@/server/services/public-leads";
 
 type Step = { kind: "contact" } | { kind: "question"; index: number } | { kind: "sending" } | { kind: "done"; handoff: Handoff };
 type Lead = { leadId: string; token: string };
 type Stored = Lead & { name: string; answers: AnswerMap };
+/** Marcador da etapa final: recarregar a tela de conclusão volta a ela em vez de abrir o formulário vazio. */
+type StoredDone = Lead & { name: string; handoff: Handoff };
 
 export type InterestFlowProps = {
   property: { id: string; title: string; slug: string; coverUrl: string | null; agentName: string; agentPhotoUrl: string | null };
@@ -28,6 +30,28 @@ const OFFLINE_ERROR = "Sem conexão. Verifique sua internet e tente novamente.";
 const numberFmt = new Intl.NumberFormat("pt-BR");
 
 const storageKey = (propertyId: string) => `sc_lead_${propertyId}`;
+const doneKey = (propertyId: string) => `sc_done_${propertyId}`;
+
+function readDone(propertyId: string): StoredDone | null {
+  try {
+    const v = JSON.parse(sessionStorage.getItem(doneKey(propertyId)) ?? "null");
+    const h = v?.handoff;
+    if (typeof v?.leadId !== "string" || typeof v?.token !== "string" || typeof h?.whatsappUrl !== "string") return null;
+    if (!h.whatsappUrl.startsWith("https://wa.me/") || !Array.isArray(h.lines)) return null;
+    return { leadId: v.leadId, token: v.token, name: typeof v.name === "string" ? v.name : "", handoff: h as Handoff };
+  } catch {
+    return null;
+  }
+}
+
+function writeDone(propertyId: string, value: StoredDone | null) {
+  try {
+    if (value) sessionStorage.setItem(doneKey(propertyId), JSON.stringify(value));
+    else sessionStorage.removeItem(doneKey(propertyId));
+  } catch {
+    /* armazenamento bloqueado */
+  }
+}
 
 function readStored(propertyId: string): Stored | null {
   try {
@@ -84,6 +108,25 @@ function maskPhone(raw: string) {
 
 const CONTACT_FIELD_IDS: Record<string, string> = { name: "cf-name", phone: "cf-phone", email: "cf-email", consent: "cf-consent" };
 
+/** Validação local (mesmas regras do servidor) — evita gastar o limite de envios do IP com erros de digitação. */
+function validateContact(c: { name: string; phone: string; email: string; consent: boolean }): Record<string, string> {
+  const errors: Record<string, string> = {};
+  if (c.name.trim().length < 2) errors.name = "Informe seu nome";
+  let digits = c.phone.replace(/\D/g, "");
+  if (digits.length > 11 && digits.startsWith("55")) digits = digits.slice(2);
+  if (digits.length !== 10 && digits.length !== 11) errors.phone = "WhatsApp inválido. Use DDD + número";
+  const email = c.email.trim();
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = "E-mail inválido";
+  if (!c.consent) errors.consent = "É preciso concordar para continuar";
+  return errors;
+}
+
+function focusFirstContactError(errors: Record<string, string>) {
+  const first = Object.keys(CONTACT_FIELD_IDS).find((k) => errors[k]);
+  if (first) document.getElementById(CONTACT_FIELD_IDS[first])?.focus();
+  return Boolean(first);
+}
+
 /** Fluxo do visitante: contato → uma pergunta por tela → encaminhamento ao WhatsApp. */
 export function InterestFlow({ property, questions, consentText }: InterestFlowProps) {
   const [step, setStep] = useState<Step>({ kind: "contact" });
@@ -98,6 +141,7 @@ export function InterestFlow({ property, questions, consentText }: InterestFlowP
   const headingRef = useRef<HTMLHeadingElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const advancing = useRef(false);
+  const advanceTimer = useRef<number | null>(null);
   const started = useRef(false);
   const firstStep = useRef(true);
 
@@ -109,11 +153,18 @@ export function InterestFlow({ property, questions, consentText }: InterestFlowP
     if (started.current) return;
     started.current = true;
     captureAttribution();
-    sendEvent(property.id, "QUESTIONNAIRE_START");
+    sendEventOncePerSession(property.id, "QUESTIONNAIRE_START");
+    /* eslint-disable react-hooks/set-state-in-effect -- sessionStorage só existe no navegador; restaurar após hidratar */
+    const done = readDone(property.id);
+    if (done) {
+      setLead({ leadId: done.leadId, token: done.token });
+      setContact((c) => ({ ...c, name: done.name }));
+      setStep({ kind: "done", handoff: done.handoff });
+      return;
+    }
     const saved = readStored(property.id);
     if (!saved) return;
     const vis = visibleQuestions(questions, saved.answers);
-    /* eslint-disable react-hooks/set-state-in-effect -- sessionStorage só existe no navegador; restaurar após hidratar */
     setLead({ leadId: saved.leadId, token: saved.token });
     setAnswers(saved.answers);
     setContact((c) => ({ ...c, name: saved.name }));
@@ -125,10 +176,21 @@ export function InterestFlow({ property, questions, consentText }: InterestFlowP
   }, [property.id, questions]);
 
   const stepKey =
-    step.kind === "question" ? `q-${visible[step.index]?.id ?? step.index}` : step.kind;
+    step.kind === "question" ? `q-${visible[step.index]?.id ?? step.index}`
+    : step.kind === "sending" && error ? "sending-error"
+    : step.kind;
+
+  function cancelAdvance() {
+    if (advanceTimer.current !== null) window.clearTimeout(advanceTimer.current);
+    advanceTimer.current = null;
+    advancing.current = false;
+  }
+
+  useEffect(() => () => cancelAdvance(), []);
 
   // foco no título a cada troca de etapa (leitores de tela anunciam a nova pergunta)
   useEffect(() => {
+    cancelAdvance();
     if (firstStep.current) {
       firstStep.current = false;
       return;
@@ -150,8 +212,14 @@ export function InterestFlow({ property, questions, consentText }: InterestFlowP
   async function submitContact(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (busy) return;
-    setBusy(true);
     setError(null);
+    const localErrors = validateContact(contact);
+    if (Object.keys(localErrors).length > 0) {
+      setContactErrors(localErrors);
+      focusFirstContactError(localErrors);
+      return;
+    }
+    setBusy(true);
     const r = await postJson<Lead>("/api/public/leads", {
       propertyId: property.id,
       name: contact.name,
@@ -166,9 +234,7 @@ export function InterestFlow({ property, questions, consentText }: InterestFlowP
     if (!r.ok) {
       if (r.status === 422 && r.fieldErrors) {
         setContactErrors(r.fieldErrors);
-        const first = Object.keys(CONTACT_FIELD_IDS).find((k) => r.fieldErrors?.[k]);
-        if (first) document.getElementById(CONTACT_FIELD_IDS[first])?.focus();
-        else setError({ message: r.fieldErrors._form ?? r.message });
+        if (!focusFirstContactError(r.fieldErrors)) setError({ message: r.fieldErrors._form ?? r.message });
       } else {
         setContactErrors({});
         setError({ message: r.message, retry: () => formRef.current?.requestSubmit() });
@@ -194,13 +260,19 @@ export function InterestFlow({ property, questions, consentText }: InterestFlowP
     });
     if (r.ok) {
       writeStored(property.id, null);
+      writeDone(property.id, { ...currentLead, name: contact.name, handoff: r.data });
       setStep({ kind: "done", handoff: r.data });
       return;
     }
     if (r.status === 422 && r.fieldErrors) {
       const idx = vis.findIndex((q) => r.fieldErrors?.[q.id]);
-      setQuestionErrors(r.fieldErrors);
-      setStep({ kind: "question", index: Math.max(0, idx) });
+      if (idx !== -1) {
+        setQuestionErrors(r.fieldErrors);
+        setStep({ kind: "question", index: idx });
+        return;
+      }
+      // erro sem pergunta visível correspondente: mostra a mensagem em vez de voltar à 1ª pergunta
+      setError({ message: r.fieldErrors._form ?? r.message, retry: () => void submitAnswers(currentAnswers, currentLead) });
       return;
     }
     if (r.status === 404) {
@@ -230,6 +302,7 @@ export function InterestFlow({ property, questions, consentText }: InterestFlowP
   }
 
   function back() {
+    cancelAdvance();
     setError(null);
     if (step.kind === "question") {
       setStep(step.index === 0 ? { kind: "contact" } : { kind: "question", index: step.index - 1 });
@@ -313,7 +386,12 @@ export function InterestFlow({ property, questions, consentText }: InterestFlowP
             onChange={(e) => setContact({ ...contact, consent: e.target.checked })}
             label={consentText}
             hint={
-              <a href="/privacidade" target="_blank" rel="noopener" className="font-medium text-brand underline underline-offset-4">
+              <a
+                href="/privacidade"
+                target="_blank"
+                rel="noopener"
+                className="inline-flex min-h-12 items-center font-medium text-brand underline underline-offset-4"
+              >
                 Ler a Política de Privacidade
               </a>
             }
@@ -360,7 +438,8 @@ export function InterestFlow({ property, questions, consentText }: InterestFlowP
         }
         const current = setAnswer(q, { optionIds: [optionId] });
         advancing.current = true;
-        window.setTimeout(() => {
+        advanceTimer.current = window.setTimeout(() => {
+          advanceTimer.current = null;
           advancing.current = false;
           next(current);
         }, 150);
@@ -536,6 +615,7 @@ export function InterestFlow({ property, questions, consentText }: InterestFlowP
         <div className="mt-auto pt-8">
           <Link
             href={`/imovel/${property.slug}`}
+            onClick={() => writeDone(property.id, null)}
             className="inline-flex h-12 w-full items-center justify-center rounded-control text-base font-medium text-ink-muted hover:bg-ink/5 hover:text-ink"
           >
             Voltar ao imóvel
@@ -620,7 +700,7 @@ function ErrorBox({ error, srOnly }: { error: { message: string; retry?: () => v
             <button
               type="button"
               onClick={error.retry}
-              className="inline-flex min-h-11 items-center gap-2 font-semibold underline underline-offset-4"
+              className="inline-flex min-h-12 items-center gap-2 font-semibold underline underline-offset-4"
             >
               <RotateCcw aria-hidden className="size-4" />
               Tentar novamente

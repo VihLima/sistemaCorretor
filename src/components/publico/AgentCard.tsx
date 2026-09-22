@@ -57,7 +57,7 @@ export function AgentCard({ agent, className }: { agent: PublicAgent; className?
           href={agent.instagramUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex min-h-11 items-center gap-2 self-start text-[0.9375rem] font-medium text-brand underline-offset-4 hover:underline"
+          className="inline-flex min-h-12 items-center gap-2 self-start text-[0.9375rem] font-medium text-brand underline-offset-4 hover:underline"
         >
           <AtSign aria-hidden className="size-4" />
           {instagramHandle(agent.instagramUrl)} no Instagram

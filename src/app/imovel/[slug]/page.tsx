@@ -195,13 +195,22 @@ export default async function PropertyPage({ params }: PageProps<"/imovel/[slug]
             </section>
           )}
           {!available && <div className="hidden lg:block">{priceBlock("ink")}</div>}
-          <AgentCard agent={p.agent} className="border-t border-line pt-8 lg:border-0 lg:pt-0" />
+          <AgentCard
+            agent={{
+              name: p.agent.name,
+              photoUrl: p.agent.photoUrl,
+              creci: p.agent.creci,
+              agencyName: p.agent.agencyName,
+              bio: p.agent.bio,
+              instagramUrl: p.agent.instagramUrl,
+            }}
+            className="border-t border-line pt-8 lg:border-0 lg:pt-0" />
         </aside>
       </div>
 
       <footer className="border-t border-line">
         <div className="mx-auto flex max-w-6xl items-center px-4 py-5 text-sm text-ink-muted sm:px-6 lg:px-8">
-          <Link href="/privacidade" className="inline-flex min-h-11 items-center underline-offset-4 hover:underline">
+          <Link href="/privacidade" className="inline-flex min-h-12 items-center underline-offset-4 hover:underline">
             Política de privacidade
           </Link>
         </div>
